@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App - Live Demo & Testing Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --online: #10b981;
+            --offline: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Auth Screen */
+        #auth-container {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .auth-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .auth-tab.active {
+            color: var(--accent);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: var(--accent);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .auth-error {
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* App Layout */
+        #app-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 340px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .user-status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            background: var(--offline);
+        }
+
+        .user-status-dot.online {
+            background: var(--online);
+        }
+
+        .logout-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .logout-btn:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .section-title {
+            padding: 12px 16px 6px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        .chat-list, .users-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .chat-item, .user-item {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .chat-item:hover, .user-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .chat-item.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-left: 3px solid var(--accent);
+        }
+
+        .chat-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-name {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .last-message {
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        .unread-badge {
+            background: var(--accent);
+            color: white;
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+
+        /* Chat Window */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+        }
+
+        .chat-header {
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message-row {
+            display: flex;
+            flex-direction: column;
+            max-width: 65%;
+        }
+
+        .message-row.sent {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .message-row.received {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .message-bubble {
+            padding: 10px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .message-row.sent .message-bubble {
+            background: var(--accent);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message-row.received .message-bubble {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .typing-indicator {
+            padding: 0 24px 8px;
+            font-size: 12px;
+            color: var(--accent);
+            font-style: italic;
+            height: 20px;
+        }
+
+        .message-input-bar {
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+        }
+
+        .message-input-bar input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .message-input-bar input:focus {
+            border-color: var(--accent);
+        }
+
+        .send-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0 20px;
+            border-radius: 24px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .empty-placeholder {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 24px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Authentication Modal -->
+<div id="auth-container">
+    <div class="auth-card">
+        <h2 style="margin-bottom: 6px; text-align: center;">💬 Chat App</h2>
+        <p style="text-align: center; color: var(--text-secondary); font-size: 13px; margin-bottom: 20px;">Real-time messaging backend demo</p>
+
+        <div class="auth-tabs">
+            <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Login</div>
+            <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Register</div>
+        </div>
+
+        <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+            <div class="form-group" id="group-fullname" style="display: none;">
+                <label>Full Name</label>
+                <input type="text" id="auth-fullname" placeholder="John Doe">
+            </div>
+
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="auth-email" placeholder="john@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="auth-password" placeholder="••••••••" required>
+            </div>
+
+            <button type="submit" class="btn" id="auth-btn">Sign In</button>
+            <div class="auth-error" id="auth-error"></div>
+        </form>
+    </div>
+</div>
+
+<!-- Main App UI -->
+<div id="app-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="user-header">
+            <div class="user-info">
+                <div class="avatar" id="current-user-avatar">?</div>
+                <div>
+                    <div style="font-weight: 600; font-size: 14px;" id="current-user-name">Loading...</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);"><span class="user-status-dot online"></span> Online</div>
+                </div>
+            </div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+
+        <div class="section-title">Active Conversations</div>
+        <div class="chat-list" id="chat-list"></div>
+
+        <div class="section-title">All Registered Users (Start Chat)</div>
+        <div class="users-list" id="users-list"></div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+        <div id="empty-state" class="empty-placeholder">
+            <div style="font-size: 48px; margin-bottom: 12px;">💬</div>
+            <h3>Select a conversation or start a new chat</h3>
+            <p style="margin-top: 6px; font-size: 14px;">Select any user from the sidebar to chat in real-time!</p>
+        </div>
+
+        <div id="active-chat-container" style="display: none; height: 100%; flex-direction: column;">
+            <div class="chat-header">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="avatar" id="active-avatar">?</div>
+                    <div>
+                        <div style="font-weight: 600;" id="active-name">...</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);" id="active-status">Offline</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="messages-container" id="messages-container"></div>
+            <div class="typing-indicator" id="typing-indicator"></div>
+
+            <form class="message-input-bar" onsubmit="sendMessage(event)">
+                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" oninput="handleTyping()">
+                <button type="submit" class="send-btn">Send</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentUser = null;
+    let token = localStorage.getItem('chat_token');
+    let socket = null;
+    let currentChatId = null;
+    let currentOtherUserId = null;
+    let typingTimeout = null;
+    let authMode = 'login';
+
+    function switchAuthTab(mode) {
+        authMode = mode;
+        document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+        document.getElementById('tab-register').classList.toggle('active', mode === 'register');
+        document.getElementById('group-fullname').style.display = mode === 'register' ? 'block' : 'none';
+        document.getElementById('auth-btn').innerText = mode === 'register' ? 'Create Account' : 'Sign In';
+        document.getElementById('auth-error').style.display = 'none';
+    }
+
+    async function handleAuthSubmit(e) {
+        e.preventDefault();
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+        const fullName = document.getElementById('auth-fullname').value;
+        const errorEl = document.getElementById('auth-error');
+
+        errorEl.style.display = 'none';
+
+        try {
+            const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+            const payload = authMode === 'login' 
+                ? { email, password } 
+                : { full_name: fullName, email, password, confirmPassword: password };
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Authentication failed');
+            }
+
+            token = data.token;
+            currentUser = data.user;
+            localStorage.setItem('chat_token', token);
+            document.getElementById('auth-container').style.display = 'none';
+            initApp();
+        } catch (err) {
+            errorEl.innerText = err.message;
+            errorEl.style.display = 'block';
+        }
+    }
+
+    async function initApp() {
+        if (!token) {
+            document.getElementById('auth-container').style.display = 'flex';
+            return;
+        }
+
+        try {
+            // Verify token & fetch profile
+            const res = await fetch('/api/auth/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Session expired');
+            const data = await res.json();
+            currentUser = data.user;
+
+            document.getElementById('current-user-name').innerText = currentUser.full_name;
+            document.getElementById('current-user-avatar').innerText = currentUser.full_name[0];
+            document.getElementById('auth-container').style.display = 'none';
+
+            initSocket();
+            loadChats();
+            loadUsers();
+        } catch (err) {
+            logout();
+        }
+    }
+
+    function initSocket() {
+        if (socket) socket.disconnect();
+
+        socket = io({
+            auth: { token }
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket connected successfully');
+        });
+
+        socket.on('receive_message', (msg) => {
+            if (currentChatId && msg.chat_id === currentChatId) {
+                appendMessage(msg);
+                socket.emit('mark_as_read', { chatId: currentChatId });
+            }
+            loadChats(); // Refresh conversation order and preview
+        });
+
+        socket.on('new_message_notification', () => {
+            loadChats();
+        });
+
+        socket.on('user_typing', ({ chatId, userName }) => {
+            if (currentChatId && chatId === currentChatId) {
+                document.getElementById('typing-indicator').innerText = `${userName} is typing...`;
+            }
+        });
+
+        socket.on('user_stop_typing', ({ chatId }) => {
+            if (currentChatId && chatId === currentChatId) {
+                document.getElementById('typing-indicator').innerText = '';
+            }
+        });
+
+        socket.on('user_status_changed', ({ userId, status }) => {
+            loadUsers();
+            loadChats();
+            if (currentOtherUserId === userId) {
+                document.getElementById('active-status').innerText = status;
+            }
+        });
+    }
+
+    async function loadChats() {
+        try {
+            const res = await fetch('/api/chats', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const chats = await res.json();
+            const list = document.getElementById('chat-list');
+            list.innerHTML = '';
+
+            if (chats.length === 0) {
+                list.innerHTML = '<div style="padding: 16px; color: var(--text-secondary); font-size: 13px;">No active conversations yet.</div>';
+                return;
+            }
+
+            chats.forEach(chat => {
+                const item = document.createElement('div');
+                item.className = `chat-item ${currentChatId === chat.id ? 'active' : ''}`;
+                item.onclick = () => openChat(chat.id, chat.other_user_id, chat.other_user_name, chat.other_user_status);
+                item.innerHTML = `
+                    <div class="avatar">${chat.other_user_name[0]}</div>
+                    <div class="chat-details">
+                        <div class="chat-name">
+                            <span>${chat.other_user_name}</span>
+                            ${chat.unread_count > 0 ? `<span class="unread-badge">${chat.unread_count}</span>` : ''}
+                        </div>
+                        <div class="last-message">${chat.last_message || 'Start chatting...'}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        } catch (e) {
+            console.error('Error loading chats:', e);
+        }
+    }
+
+    async function loadUsers() {
+        try {
+            const res = await fetch('/api/users', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const users = await res.json();
+            const list = document.getElementById('users-list');
+            list.innerHTML = '';
+
+            if (users.length === 0) {
+                list.innerHTML = '<div style="padding: 16px; color: var(--text-secondary); font-size: 13px;">No other users found. Open another browser tab and register a second account!</div>';
+                return;
+            }
+
+            users.forEach(u => {
+                const item = document.createElement('div');
+                item.className = 'user-item';
+                item.onclick = () => startChatWithUser(u.id);
+                item.innerHTML = `
+                    <div class="avatar">${u.full_name[0]}</div>
+                    <div class="chat-details">
+                        <div class="chat-name">
+                            <span>${u.full_name}</span>
+                            <span class="user-status-dot ${u.status === 'online' ? 'online' : ''}"></span>
+                        </div>
+                        <div class="last-message">${u.email}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        } catch (e) {
+            console.error('Error loading users:', e);
+        }
+    }
+
+    async function startChatWithUser(otherUserId) {
+        try {
+            const res = await fetch('/api/chats/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ otherUserId })
+            });
+            const chat = await res.json();
+            await loadChats();
+            openChat(chat.id, chat.other_user_id, chat.other_user_name, chat.other_user_status);
+        } catch (e) {
+            console.error('Error creating chat:', e);
+        }
+    }
+
+    async function openChat(chatId, otherUserId, otherUserName, otherStatus) {
+        if (currentChatId) {
+            socket.emit('leave_chat', { chatId: currentChatId });
+        }
+
+        currentChatId = chatId;
+        currentOtherUserId = otherUserId;
+
+        document.getElementById('empty-state').style.display = 'none';
+        const activeContainer = document.getElementById('active-chat-container');
+        activeContainer.style.display = 'flex';
+
+        document.getElementById('active-name').innerText = otherUserName;
+        document.getElementById('active-avatar').innerText = otherUserName[0];
+        document.getElementById('active-status').innerText = otherStatus || 'offline';
+
+        socket.emit('join_chat', { chatId });
+
+        // Fetch messages
+        const res = await fetch(`/api/messages/${chatId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const messages = await res.json();
+        const container = document.getElementById('messages-container');
+        container.innerHTML = '';
+
+        messages.forEach(msg => appendMessage(msg));
+        scrollToBottom();
+        loadChats();
+    }
+
+    function appendMessage(msg) {
+        const container = document.getElementById('messages-container');
+        const isSent = msg.sender_id === currentUser.id;
+        const row = document.createElement('div');
+        row.className = `message-row ${isSent ? 'sent' : 'received'}`;
+        
+        const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        row.innerHTML = `
+            <div class="message-bubble">${msg.content}</div>
+            <div class="message-time">${time}</div>
+        `;
+        container.appendChild(row);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        const container = document.getElementById('messages-container');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function handleTyping() {
+        if (!currentChatId || !socket) return;
+        socket.emit('typing', { chatId: currentChatId });
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            socket.emit('stop_typing', { chatId: currentChatId });
+        }, 1200);
+    }
+
+    async function sendMessage(e) {
+        e.preventDefault();
+        const input = document.getElementById('message-input');
+        const content = input.value.trim();
+        if (!content || !currentChatId) return;
+
+        input.value = '';
+        socket.emit('stop_typing', { chatId: currentChatId });
+
+        socket.emit('send_message', {
+            chatId: currentChatId,
+            content
+        });
+    }
+
+    function logout() {
+        localStorage.removeItem('chat_token');
+        token = null;
+        currentUser = null;
+        if (socket) socket.disconnect();
+        document.getElementById('active-chat-container').style.display = 'none';
+        document.getElementById('empty-state').style.display = 'flex';
+        document.getElementById('auth-container').style.display = 'flex';
+    }
+
+    // Auto-login if token exists
+    if (token) {
+        initApp();
+    }
+</script>
+</body>
+</html>
